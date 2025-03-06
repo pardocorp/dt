@@ -14,18 +14,24 @@ const infoDevice = new InfoDevice();
 infoDevice.setSizeConvertObject(true);
 infoDevice.setResolutionConvertObject(true);
 
-// ✅ Habilitar CORS para permitir solicitudes desde tu dominio
+// ✅ Configurar CORS correctamente
 app.use(cors({
-    origin: 'https://datawifi.co', // Cambia esto por tu dominio real
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type']
+    origin: 'https://datawifi.co', // Permitir solo este dominio
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true // Permitir cookies y autenticación si es necesario
 }));
+
+// ✅ Permitir preflight requests
+app.options('*', cors());
 
 app.use(bodyParser.json());
 
 app.post('/api/detect', (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "https://datawifi.co"); // Permitir solicitudes desde datawifi.co
-    res.setHeader("Access-Control-Allow-Headers", "origin, content-type, accept");
+    res.setHeader("Access-Control-Allow-Origin", "https://datawifi.co");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Origin, Content-Type, Accept");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
 
     let { useragent, aboutDevice, enableIndex, headers } = req.body;
     let customHeaders = {};
