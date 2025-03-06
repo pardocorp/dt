@@ -7,67 +7,81 @@ const InfoDevice = require('node-device-detector/parser/device/info-device');
 
 const app = express();
 const port = process.env.PORT || 3000;
-const detector = new DeviceDetector({ clientIndexes: true });
+
+// Configurar DeviceDetector con opciones avanzadas
+const detector = new DeviceDetector({
+    clientIndexes: true,
+    deviceIndexes: true,
+    deviceAliasCode: true,  // Agrega códigos alias del dispositivo
+    deviceTrusted: true,    // Verifica si el dispositivo es confiable
+    deviceInfo: true        // Obtiene información detallada
+});
+
 const clientHints = new ClientHints();
 const infoDevice = new InfoDevice();
 
 infoDevice.setSizeConvertObject(true);
 infoDevice.setResolutionConvertObject(true);
 
-// ✅ Configurar CORS correctamente
+// ✅ Configurar CORS para evitar bloqueos de origen cruzado
 app.use(cors({
     origin: 'https://datawifi.co', // Permitir solo este dominio
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true // Permitir cookies y autenticación si es necesario
+    credentials: true
 }));
 
-// ✅ Permitir preflight requests
+// ✅ Permitir preflight requests para todas las rutas
 app.options('*', cors());
 
 app.use(bodyParser.json());
 
 app.post('/api/detect', (req, res) => {
-    res.setHeader("Access-Control-Allow-Origin", "https://datawifi.co");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Origin, Content-Type, Accept");
-    res.setHeader("Access-Control-Allow-Credentials", "true");
+    try {
+        // ✅ Obtener datos de la solicitud
+        const useragent = req.body.useragent || req.headers['user-agent'] || '';
+        const aboutDevice = req.body.aboutDevice || false;
+        const enableIndex = req.body.enableIndex || false;
+        const headers = req.body.headers || '';
 
-    let { useragent, aboutDevice, enableIndex, headers } = req.body;
-    let customHeaders = {};
-
-    if (headers && headers.includes('{')) {
-        try {
-            customHeaders = JSON.parse(headers);
-        } catch (e) {
-            console.error(e);
+        // ✅ Procesar encabezados adicionales de client hints
+        let customHeaders = {};
+        if (headers) {
+            try {
+                customHeaders = typeof headers === 'string' ? JSON.parse(headers) : headers;
+            } catch (error) {
+                console.error('Error parsing headers:', error);
+            }
         }
-    } else {
-        headers.split("\n").forEach((item) => {
-            let partStr = item.split(":", 2);
-            customHeaders[partStr[0]] = partStr[1];
+
+        detector.deviceIndexes = Boolean(enableIndex);
+        const clientHintData = clientHints.parse(customHeaders);
+
+        // ✅ Detectar información del dispositivo
+        let deviceResult = detector.detect(useragent, clientHintData);
+        let botResult = detector.parseBot(useragent);
+
+        // ✅ Obtener información adicional del dispositivo si es necesario
+        let deviceInfoResult = null;
+        if (aboutDevice && deviceResult.device?.brand && deviceResult.device?.model) {
+            deviceInfoResult = infoDevice.info(
+                deviceResult.device.brand,
+                deviceResult.device.model
+            );
+        }
+
+        // ✅ Enviar respuesta JSON al cliente
+        res.json({
+            useragent,
+            deviceResult,
+            botResult,
+            deviceInfoResult
         });
-    }
 
-    detector.deviceIndexes = Boolean(enableIndex);
-    let clientHintData = clientHints.parse(customHeaders);
-    let deviceResult = detector.detect(useragent, clientHintData);
-    let botResult = detector.parseBot(useragent);
-    
-    let deviceInfoResult = null;
-    if (aboutDevice) {
-        deviceInfoResult = infoDevice.info(
-            deviceResult.device.brand,
-            deviceResult.device.model
-        );
+    } catch (error) {
+        console.error('Error processing request:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
     }
-
-    res.json({
-        useragent,
-        deviceResult,
-        botResult,
-        deviceInfoResult
-    });
 });
 
 // Iniciar el servidor
